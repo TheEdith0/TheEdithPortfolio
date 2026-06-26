@@ -28,6 +28,7 @@ const loaderTxt = document.getElementById('loader-text');
 const lightConeEl = document.getElementById('light-cone');
 const streakCanvas = document.getElementById('streak-canvas');
 const overlayEl = document.getElementById('overlay');
+const welcomeTextEl = document.getElementById('welcome-text');
 const fogLayerEl = document.getElementById('fog-layer');
 const nextSectionEl = document.getElementById('next-section');
 const scrollDashes = document.querySelectorAll('.scroll-dash');
@@ -693,13 +694,16 @@ function animate() {
   const sp = scrollProgress;
 
   // Zones
-  // Distort cloud starts slightly before lamp finishes rising and builds slowly
-  const distortT = smoothstep(0.60, 0.90, sp);
-  const fogT = smoothstep(0.75, 0.95, sp);
+  // Distort cloud builds up earlier to give a nice long golden phase
+  const distortT = smoothstep(0.40, 0.75, sp);
+  // Blue fog fades in over a much wider range to slow down the transition
+  const fogT     = smoothstep(0.60, 0.90, sp);
+  // Dive underwater!
+  const diveT    = smoothstep(0.85, 1.00, sp);
 
-  // Compressed zoom & rise
-  const zoomT = easeInOut(Math.min(sp / 0.38, 1.0));
-  const riseT = easeOut(Math.min(Math.max((sp - 0.38) / 0.27, 0.0), 1.0));
+  // Compressed zoom & rise so the initial scroll feels punchy and fast
+  const zoomT  = easeInOut(Math.min(sp / 0.20, 1.0));
+  const riseT  = easeOut(Math.min(Math.max((sp - 0.15) / 0.30, 0.0), 1.0));
 
   const camR = THREE.MathUtils.lerp(CAM_NEAR_R, CAM_FAR_R, zoomT);
   const orbit = riseT * Math.PI * 1.5 + userOrbit;   // combine scroll orbit and user swipe orbit
@@ -726,10 +730,21 @@ function animate() {
 
   // ── CAMERA (x-z plane arc, plus tilt down at the end) ────────
   const tiltT = smoothstep(0.65, 0.95, sp);
-  camera.position.x = Math.sin(orbit) * camR;
-  camera.position.z = Math.cos(orbit) * camR;
-  camera.position.y = THREE.MathUtils.lerp(-2.5 + riseY * 0.15, beamEndY + 2.0, tiltT);
-  lookAt.set(0, THREE.MathUtils.lerp(1.5 + riseY * 0.18, beamEndY, tiltT), 0);
+  
+  let finalCamR = camR;
+  let finalCamY = THREE.MathUtils.lerp(-2.5 + riseY * 0.15, beamEndY + 2.0, tiltT);
+  let lookY = THREE.MathUtils.lerp(1.5 + riseY * 0.18, beamEndY, tiltT);
+  
+  // DIVE logic: bring camera much further down and closer in!
+  finalCamY = THREE.MathUtils.lerp(finalCamY, beamEndY - 45.0, diveT);
+  finalCamR = THREE.MathUtils.lerp(finalCamR, 2.0, diveT);
+  // Make the camera look straight ahead or slightly down when diving, rather than looking up at the clouds
+  lookY = THREE.MathUtils.lerp(lookY, beamEndY - 55.0, diveT);
+
+  camera.position.x = Math.sin(orbit) * finalCamR;
+  camera.position.z = Math.cos(orbit) * finalCamR;
+  camera.position.y = finalCamY;
+  lookAt.set(0, lookY, 0);
   camera.lookAt(lookAt);
 
   // ── FADE ──────────────────────────────────────────────────────
@@ -744,7 +759,8 @@ function animate() {
 
   // Overlay text fades out quickly after zoom-out ends
   if (overlayEl) {
-    const overlayFade = Math.max(0.0, 1.0 - Math.max((sp - 0.38) / 0.08, 0.0));
+    // Fade out the intro text immediately after the zoom-out completes (0.20 to 0.25)
+    const overlayFade = 1.0 - smoothstep(0.20, 0.25, sp);
     overlayEl.style.opacity = String(overlayFade);
   }
 
@@ -841,12 +857,19 @@ function animate() {
   }
 
   if (fogLayerEl) {
-    fogLayerEl.style.opacity = fogT.toFixed(3);
+    fogLayerEl.style.opacity = Math.max(0, fogT * 0.85 + diveT * 0.15);
   }
 
   if (nextSectionEl) {
     if (fogT > 0.88) nextSectionEl.classList.add('visible');
     else nextSectionEl.classList.remove('visible');
+  }
+
+  if (welcomeTextEl) {
+    // Fade in a little after intro text disappears (0.26 to 0.35), fade out as the blue fog rolls in (0.70 to 0.80)
+    const welcomeFadeIn = smoothstep(0.26, 0.35, sp);
+    const welcomeFadeOut = smoothstep(0.70, 0.80, sp);
+    welcomeTextEl.style.opacity = String(welcomeFadeIn * (1.0 - welcomeFadeOut));
   }
 
   // ── 2-D STREAKS ───────────────────────────────────────────────

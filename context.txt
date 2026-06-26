@@ -1,0 +1,34 @@
+# Lumière — Ceiling Lamp Showcase
+Context & Project Overview
+
+## Description
+A 3D interactive web showcase for a premium ceiling lamp ("Lumière"), built using Three.js. The page features a cinematic scroll-driven animation where the camera zooms out, orbits around the lamp, and creates an illusion of the lamp rising as the user scrolls down the page.
+
+## Core Features & Visuals
+1. **3D Model**: The "Plafonnier couloir RdC" ceiling lamp is loaded via `GLTFLoader` with Draco compression.
+2. **Lighting & Post-Processing**:
+   - Environment map (PMREM equirectangular).
+   - PointLight (flickering bulb) and SpotLight.
+   - `UnrealBloomPass` for premium glowing effects and bloom.
+3. **Particle Systems (God Rays & Ambient)**:
+   - **Volumetric Beam / God Rays**: A cone of light emanating from the lamp downwards, created with two layers of particles: 
+     - 4,300 fine dust motes.
+     - 200 larger "bokeh" orbs.
+   - **Animated Helix Trails**: 3 glowing comet-like streaks that spiral downward along the beam in a helix path. Implemented using a custom `ShaderMaterial` with `gl_PointCoord` circular discard for perfect spherical glowing heads and fading tails.
+   - **Ambient Particles**: 1,400 drifting dust particles and 600 static background stars.
+4. **Scroll-Driven Animation**:
+   - **Phase 1 (Zoom Out, 0–38% scroll)**: The camera smoothly pulls back from a close-up of the lamp.
+   - **Phase 2 (Orbit & Rise, 38–100% scroll)**: The camera orbits 270° around the scene while the lamp and its attached particle systems move upwards.
+
+## File Structure
+- `index.html`: The main entry point, containing the Three.js canvas container, the overlay text ("Lumière", "Statement Lighting"), a CSS-based volumetric cone (`#light-cone`), and a 2D streak overlay canvas.
+- `style.css`: Contains styling for the layout, the animated loading screen (pulsing bulb), typography, overlay UI, and the height spacer (`#scroll-spacer`) to enable deep scrolling.
+- `main.js`: The primary Three.js logic file handling initialization, scene setup, model loading, custom shaders, scroll event listeners, and the animation loop.
+
+## Technologies Used
+- HTML, CSS, JavaScript (Vanilla)
+- Three.js (`three` + `GLTFLoader`, `DRACOLoader`, `EffectComposer`, `UnrealBloomPass`)
+- Vite (local development server)
+
+## Current State
+The project is currently configured to its "v5" state, retaining all the rich volumetric lighting, HTML overlays, and animated spiraling helix trails.

@@ -1,0 +1,310 @@
+/* =========================================================
+   LUMIÈRE — CSS
+   ========================================================= */
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+:root {
+  --gold: #d4a853;
+  --gold-light: #f0cc80;
+  --cream: #f5efe6;
+  --warm-white: #fff8ee;
+  --bg: #000000;
+  --font-serif: 'Cormorant Garamond', Georgia, serif;
+  --font-sans: 'Outfit', system-ui, sans-serif;
+}
+
+html {
+  width: 100%;
+  height: 100%;
+  overflow-x: hidden;
+}
+
+body {
+  width: 100%;
+  min-height: 100%;
+  overflow-x: hidden;
+  overflow-y: auto;
+  background: var(--bg);
+  color: var(--cream);
+  font-family: var(--font-sans);
+}
+
+/* ===================== LOADER ========================= */
+#loader {
+  position: fixed;
+  inset: 0;
+  background: #000;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity 0.8s ease, visibility 0.8s ease;
+}
+
+#loader.hidden {
+  opacity: 0;
+  visibility: hidden;
+}
+
+.loader-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 24px;
+}
+
+.loader-lamp {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+}
+
+.loader-cord {
+  width: 2px;
+  height: 40px;
+  background: linear-gradient(to bottom, #666, #444);
+  border-radius: 1px;
+}
+
+.loader-bulb {
+  width: 36px;
+  height: 36px;
+  border-radius: 50% 50% 45% 45%;
+  background: radial-gradient(circle at 40% 35%, #fff8d0, #d4a853 40%, #7a5a1a);
+  box-shadow: 0 0 20px 8px rgba(212, 168, 83, 0.7), 0 0 60px 20px rgba(212, 168, 83, 0.3);
+  animation: bulb-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes bulb-pulse {
+  0%, 100% { box-shadow: 0 0 20px 8px rgba(212, 168, 83, 0.7), 0 0 60px 20px rgba(212, 168, 83, 0.3); }
+  50%       { box-shadow: 0 0 30px 14px rgba(212, 168, 83, 0.9), 0 0 90px 30px rgba(212, 168, 83, 0.5); }
+}
+
+.loader-bar-wrap {
+  width: 200px;
+  height: 2px;
+  background: rgba(255,255,255,0.1);
+  border-radius: 1px;
+  overflow: hidden;
+}
+
+.loader-bar {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, var(--gold), var(--gold-light));
+  border-radius: 1px;
+  transition: width 0.3s ease;
+}
+
+.loader-text {
+  font-family: var(--font-sans);
+  font-weight: 200;
+  font-size: 0.75rem;
+  letter-spacing: 0.25em;
+  text-transform: uppercase;
+  color: rgba(255,255,255,0.4);
+}
+
+/* ===================== THREE.JS CANVAS ========================= */
+#scene-container {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+}
+
+#three-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+/* ===================== LIGHT CONE (CSS) ========================= */
+#light-cone {
+  position: fixed;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 400px;
+  height: 95vh;
+  background: conic-gradient(
+    from 270deg at 50% 0%,
+    transparent 15deg,
+    rgba(255, 220, 130, 0.03) 20deg,
+    rgba(255, 220, 130, 0.06) 26deg,
+    rgba(255, 200, 80,  0.09) 30deg,
+    rgba(255, 200, 80,  0.06) 34deg,
+    rgba(255, 220, 130, 0.03) 40deg,
+    transparent 45deg
+  );
+  pointer-events: none;
+  z-index: 2;
+  mask-image: linear-gradient(to bottom, rgba(0,0,0,1) 0%, rgba(0,0,0,0.6) 40%, transparent 90%);
+  -webkit-mask-image: linear-gradient(to bottom, rgba(0,0,0,1) 0%, rgba(0,0,0,0.6) 40%, transparent 90%);
+  animation: cone-flicker 4s ease-in-out infinite;
+  transition: opacity 0.3s ease;
+}
+
+/* ===================== STREAK CANVAS ========================= */
+#streak-canvas {
+  position: fixed;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+  mix-blend-mode: screen;
+}
+
+@keyframes cone-flicker {
+  0%, 100% { opacity: 1; }
+  30%       { opacity: 0.85; }
+  60%       { opacity: 0.95; }
+  80%       { opacity: 0.88; }
+}
+
+/* ===================== OVERLAY ========================= */
+#overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: center;
+  padding-bottom: 40px;
+}
+
+/* Hero Text — placed lower, visible below the lamp */
+#hero-text {
+  position: absolute;
+  bottom: 130px;
+  left: 50%;
+  transform: translateX(-50%);
+  text-align: center;
+  white-space: nowrap;
+  animation: fade-up 1.2s ease both;
+  animation-delay: 0.6s;
+  opacity: 0;
+}
+
+@keyframes fade-up {
+  from { opacity: 0; transform: translateX(-50%) translateY(30px); }
+  to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
+.overline {
+  display: block;
+  font-family: var(--font-sans);
+  font-weight: 300;
+  font-size: 0.65rem;
+  letter-spacing: 0.35em;
+  text-transform: uppercase;
+  color: var(--gold);
+  margin-bottom: 10px;
+}
+
+#hero-text h1 {
+  font-family: var(--font-serif);
+  font-weight: 300;
+  font-size: clamp(3rem, 8vw, 7rem);
+  letter-spacing: 0.05em;
+  line-height: 1;
+  color: var(--warm-white);
+  text-shadow: 0 0 80px rgba(212, 168, 83, 0.3);
+  margin-bottom: 16px;
+}
+
+.subtitle {
+  font-family: var(--font-sans);
+  font-weight: 200;
+  font-size: clamp(0.75rem, 1.5vw, 0.95rem);
+  letter-spacing: 0.08em;
+  color: rgba(245, 239, 230, 0.55);
+  line-height: 1.7;
+}
+
+/* Bottom Info Bar */
+#info-bar {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  padding: 14px 36px;
+  background: rgba(255,255,255,0.04);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 100px;
+  animation: fade-up 1.2s ease both;
+  animation-delay: 1s;
+  opacity: 0;
+}
+
+.info-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 0 24px;
+}
+
+.info-label {
+  font-size: 0.6rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: rgba(255,255,255,0.35);
+}
+
+.info-value {
+  font-size: 0.8rem;
+  font-weight: 300;
+  letter-spacing: 0.05em;
+  color: var(--cream);
+}
+
+.info-divider {
+  width: 1px;
+  height: 30px;
+  background: rgba(255,255,255,0.12);
+}
+
+/* ===================== SCROLL SPACER ========================= */
+#scroll-spacer {
+  position: relative;
+  height: 650vh;   /* phase-1 zoom-out + phase-2 rise */
+  pointer-events: none;
+}
+
+
+/* ===================== SCROLL HINT ========================= */
+#scroll-hint {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 11;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  opacity: 0.4;
+  font-size: 0.6rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: rgba(255,255,255,0.5);
+  animation: fade-up 1s ease both 1.5s;
+}
+
+/* ===================== RESPONSIVE ========================= */
+@media (max-width: 600px) {
+  #info-bar {
+    gap: 0;
+    padding: 12px 20px;
+  }
+  .info-item { padding: 0 14px; }
+  .subtitle br { display: none; }
+  #light-cone { width: 100vw; }
+}

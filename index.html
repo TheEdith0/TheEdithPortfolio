@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Lumière — Ceiling Lamp Showcase</title>
+  <meta name="description" content="An immersive 3D showcase of a premium ceiling lamp with volumetric lighting and particle effects." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300&family=Outfit:wght@200;300;400&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- Loading Screen -->
+  <div id="loader">
+    <div class="loader-inner">
+      <div class="loader-lamp">
+        <div class="loader-bulb"></div>
+        <div class="loader-cord"></div>
+      </div>
+      <div class="loader-bar-wrap">
+        <div class="loader-bar" id="loader-bar"></div>
+      </div>
+      <p class="loader-text" id="loader-text">Loading…</p>
+    </div>
+  </div>
+
+  <!-- Main Scene Container -->
+  <div id="scene-container">
+    <canvas id="three-canvas"></canvas>
+  </div>
+
+  <!-- Overlay Content -->
+  <div id="overlay">
+    <!-- Hero Text -->
+    <div id="hero-text">
+      <span class="overline">Statement Lighting</span>
+      <h1>Lumière</h1>
+      <p class="subtitle">Where craftsmanship meets ambiance — a ceiling lamp<br>sculpted for extraordinary spaces.</p>
+    </div>
+
+    <!-- Bottom Info Bar -->
+    <div id="info-bar">
+      <div class="info-item">
+        <span class="info-label">Material</span>
+        <span class="info-value">Metal &amp; Cane</span>
+      </div>
+      <div class="info-divider"></div>
+      <div class="info-item">
+        <span class="info-label">Finish</span>
+        <span class="info-value">Matte White</span>
+      </div>
+      <div class="info-divider"></div>
+      <div class="info-item">
+        <span class="info-label">Style</span>
+        <span class="info-value">Artisanal</span>
+      </div>
+      <div class="info-divider"></div>
+      <div class="info-item">
+        <span class="info-label">Interaction</span>
+        <span class="info-value">Drag to Rotate</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Ambient Light Cone (CSS) -->
+  <div id="light-cone"></div>
+
+  <!-- 2D Streak Canvas Overlay -->
+  <canvas id="streak-canvas"></canvas>
+
+  <!-- Scroll Spacer (gives scroll height, scene stays fixed) -->
+  <div id="scroll-spacer"></div>
+
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.167.1/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.167.1/examples/jsm/"
+      }
+    }
+  </script>
+  <script type="module" src="main.js?v=3"></script>
+</body>
+</html>

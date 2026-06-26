@@ -694,8 +694,8 @@ function animate() {
   const sp = scrollProgress;
 
   // Zones
-  // Distort cloud builds up earlier to give a nice long golden phase
-  const distortT = smoothstep(0.40, 0.75, sp);
+  // Distort cloud builds up earlier and then completely fades away as we enter the blue water
+  const distortT = smoothstep(0.40, 0.65, sp) * (1.0 - smoothstep(0.70, 0.85, sp));
   // Blue fog fades in over a much wider range to slow down the transition
   const fogT     = smoothstep(0.60, 0.90, sp);
   // Dive underwater!

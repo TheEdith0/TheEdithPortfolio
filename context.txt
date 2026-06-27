@@ -2,34 +2,40 @@
 Context & Project Overview
 
 ## Description
-A 3D interactive web showcase for a premium ceiling lamp ("Lumière"), built using Three.js. The page features a cinematic scroll-driven animation where the camera zooms out, orbits around the lamp, and creates an illusion of the lamp rising as the user scrolls down the page.
+A 3D interactive web showcase for a premium ceiling lamp ("Lumière") and a dynamic glitch/cyberpunk ending sequence. The page features a cinematic scroll-driven animation where the camera pulls back, descends with a falling sword, and concludes in a glitch-corrupted holographic environment.
 
 ## Core Features & Visuals
-1. **3D Model**: The "Plafonnier couloir RdC" ceiling lamp is loaded via `GLTFLoader` with Draco compression.
+1. **3D Models**: 
+   - "Plafonnier couloir RdC" ceiling lamp loaded via GLTFLoader with Draco compression.
+   - `sword.glb` model that spawns mid-scroll and drops down.
 2. **Lighting & Post-Processing**:
-   - Environment map (PMREM equirectangular).
-   - PointLight (flickering bulb) and SpotLight.
    - `UnrealBloomPass` for premium glowing effects and bloom.
-3. **Particle Systems (God Rays & Ambient)**:
-   - **Volumetric Beam / God Rays**: A cone of light emanating from the lamp downwards.
-   - **Animated Helix Trails**: 3 glowing comet-like streaks that spiral downward along the beam in a helix path.
-   - **Ambient Particles**: Drifting dust particles and static background stars.
-4. **Scroll-Driven Animation**:
-   - **Phase 1 (Zoom Out, 0–38% scroll)**: The camera smoothly pulls back from a close-up of the lamp.
-   - **Phase 2 (Orbit & Rise, 38–100% scroll)**: The camera orbits 270° around the scene while the lamp and its attached particle systems move upwards.
+   - `GlitchPass` (from three.js addons) triggered at the end of the scroll for a corrupted aesthetic.
+3. **Particle Systems**:
+   - **Volumetric Beam**: A light cone emanating from the lamp.
+   - **Helix Trails**: Glowing streaks spiraling downward.
+   - **Digital Embers**: Neon pink and blue sparks rising from the bottom floor.
+   - **Ambient Dust & Stars**: Drifting particles and background space.
 
-## V5 Additions & Critical Project Constraints 
+## Critical Project Constraints & Logic Flow
 **(Always check these rules before modifying code to prevent breaking established visuals):**
 
 1. **Sword Sequence (`sword.glb`)**:
    - A glowing precursor particle falls from the lamp starting at 22% scroll.
    - At 32% scroll, the particle erupts into the `sword.glb` model.
    - **Camera Constraints**: The camera MUST NEVER dive down to the physical floor (`Y = -35`). The camera remains high (`Y ≈ 1.5`) and tilts down to look at the bottom of the light beam (`beamEndY`).
-   - **Sword Descent Limit**: Because the camera stays high, the sword stops at `beamEndY - 2.0` (mid-air) so it remains perfectly in frame. It does NOT drop to the glass floor.
+   - **Sword Descent Limit**: Because the camera stays high, the sword stops at `beamEndY - 2.0` (mid-air) so it remains perfectly in frame.
+
 2. **Sword Materials & Lighting**:
-   - **PRESERVE ORIGINAL TEXTURES**: The GLTF materials for the sword are untouched (no overriding `color` or `metalness`).
-   - **Golden Edge Glow**: Achieved using two external `PointLight` objects (`bladeLight1`, `bladeLight2`) that perfectly track the sword's Y-position, casting golden light onto the metallic blades from the outside.
-3. **Impact Shockwave**:
-   - Two expanding golden rings (`shockwaveGroup`) trigger from 90% -> 100% scroll.
-   - **Positioning**: They are anchored exactly at the sword's stopping point (`beamEndY - 2.0`), NOT the physical floor, ensuring they are visible to the camera.
-   - **Visibility**: The rings fade IN and stay visible at 100% scroll (opacity does not drop to 0 at the end).
+   - **Glow Effect**: The sword material is given a soft yellow emissive tint, and a yellow `PointLight` is attached directly to the sword blade so the metallic edges catch a persistent glowing warm light as it rotates.
+
+3. **The Bottom Scene (90% -> 100% Scroll)**:
+   - **Impact Shockwave**: Two expanding golden rings anchor at the sword's stop point (`beamEndY - 2.0`).
+   - **Holographic Cyber-Grid**: A custom GLSL ShaderMaterial plane (`cyberGridMesh`) renders a neon pink grid with a radial fade. It lies perfectly flat on the ground.
+   - **Digital Embers**: 300 neon red and blue sparks (`embersMesh`) rise upwards from the grid.
+   - **Cinematic Letterboxing**: HTML/CSS pure black bars (`#cinema-bar-top`, `#cinema-bar-bottom`) slide in from off-screen to frame the sequence.
+   - **Glitch Overlay**: The `GlitchPass` and an HTML glitch overlay (`#glitch-overlay`) activate heavily.
+
+## Development Workflow
+- When adding to the bottom section, remember it relies heavily on CSS/HTML overlays synchronized with the `sp` (scroll progress) variable in the `animate()` loop.
+- Any 3D objects meant for the "floor" should be anchored to `beamEndY - 2.0`.

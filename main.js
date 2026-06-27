@@ -875,8 +875,8 @@ function animate() {
   composer.render();
 
   // ── SCROLL INDICATOR ────────────────────────────────────────
-  const scF = Math.max(0, 1 - sp * 4);
-  document.getElementById('scroll-indicator').style.opacity = String(scF);
+  // Ensure the scroll indicator stays visible at all times
+  document.getElementById('scroll-indicator').style.opacity = "1.0";
 
   if (scrollDashes.length > 0) {
     const total = scrollDashes.length;

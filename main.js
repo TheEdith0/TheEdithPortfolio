@@ -313,6 +313,46 @@ shockwaveGroup.position.set(0, -34.9, 0); // Just above floor to prevent z-fight
 shockwaveGroup.rotation.x = -Math.PI / 2;
 scene.add(shockwaveGroup);
 
+// --- Light Flash ---
+const impactLight = new THREE.PointLight(0x0088ff, 0, 80);
+shockwaveGroup.add(impactLight);
+
+// --- Volumetric Blue Smoke (Impact) ---
+const impactSmokeGeo = new THREE.BufferGeometry();
+const impactSmokeCount = 150;
+const impactSmokePos = new Float32Array(impactSmokeCount * 3);
+const impactSmokeVel = new Float32Array(impactSmokeCount * 3);
+
+for(let i=0; i<impactSmokeCount; i++){
+    // Spread in a circle
+    const theta = Math.random() * Math.PI * 2;
+    // They will spawn at center and expand, so initial pos is 0
+    impactSmokePos[i*3] = 0;
+    impactSmokePos[i*3+1] = 0;
+    impactSmokePos[i*3+2] = 0;
+    
+    // Velocity outwards (remember group is rotated, so X and Y are floor plane, Z is UP)
+    const speed = 2.0 + Math.random() * 8.0;
+    impactSmokeVel[i*3] = Math.cos(theta) * speed;
+    impactSmokeVel[i*3+1] = Math.sin(theta) * speed; // this is Z in world coords
+    impactSmokeVel[i*3+2] = 1.0 + Math.random() * 4.0; // UP in local coords
+}
+impactSmokeGeo.setAttribute('position', new THREE.BufferAttribute(impactSmokePos, 3));
+
+// We'll reuse the circleTex for soft smoke
+const impactSmokeMat = new THREE.PointsMaterial({
+    size: 2.0,
+    color: 0x0055ff,
+    transparent: true,
+    opacity: 0,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    map: circleTex,
+    alphaTest: 0.01
+});
+const impactSmoke = new THREE.Points(impactSmokeGeo, impactSmokeMat);
+shockwaveGroup.add(impactSmoke);
+
 const ring1Geo = new THREE.RingGeometry(0.8, 1.0, 64);
 const ring1Mat = new THREE.MeshBasicMaterial({ color: 0xffdd66, transparent: true, blending: THREE.AdditiveBlending, opacity: 0, depthWrite: false });
 const ring1 = new THREE.Mesh(ring1Geo, ring1Mat);
@@ -326,26 +366,48 @@ shockwaveGroup.add(ring2);
 // ──────────────────────────────────────────────────────────────────
 //  HOLOGRAPHIC CYBER-GRID (Virtual Floor)
 // ──────────────────────────────────────────────────────────────────
-const cyberGridGeo = new THREE.PlaneGeometry(80, 80);
+const cyberGridGeo = new THREE.PlaneGeometry(80, 80, 128, 128); // High poly for displacement
 const cyberGridMat = new THREE.ShaderMaterial({
   transparent: true,
   blending: THREE.AdditiveBlending,
   depthWrite: false,
+  side: THREE.DoubleSide,
   uniforms: {
     uColor: { value: new THREE.Color(0xff2255) }, // Neon red-pink to match glitch
-    uOpacity: { value: 0.0 }
+    uOpacity: { value: 0.0 },
+    uImpactDist: { value: 0.0 },
+    uImpactStrength: { value: 0.0 }
   },
   vertexShader: `
+    uniform float uImpactDist;
+    uniform float uImpactStrength;
     varying vec2 vUv;
+    varying float vRipple;
+    
     void main() {
       vUv = uv;
-      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      vec3 pos = position;
+      
+      float dist = distance(uv, vec2(0.5));
+      
+      // Calculate a ring that expands outwards based on uImpactDist
+      float wave = smoothstep(uImpactDist - 0.05, uImpactDist, dist) * (1.0 - smoothstep(uImpactDist, uImpactDist + 0.05, dist));
+      
+      // Displace Z (which becomes world Y after group rotation)
+      // The sine wave adds physical ripples, scaled by impact strength
+      float disp = wave * sin(dist * 100.0 - uImpactDist * 100.0) * uImpactStrength;
+      pos.z += disp * 4.0; 
+      
+      vRipple = wave * uImpactStrength;
+      
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
     }
   `,
   fragmentShader: `
     uniform vec3 uColor;
     uniform float uOpacity;
     varying vec2 vUv;
+    varying float vRipple;
     
     void main() {
       // Generate grid lines
@@ -361,7 +423,12 @@ const cyberGridMat = new THREE.ShaderMaterial({
       // Add a subtle glowing center
       float centerGlow = (1.0 - smoothstep(0.0, 0.15, dist)) * 0.5;
       
-      gl_FragColor = vec4(uColor, (lineAlpha + centerGlow) * radialFade * uOpacity);
+      // Emissive Blue Energy Flow
+      float surge = smoothstep(0.0, 0.01, vRipple) * vRipple;
+      vec3 finalColor = mix(uColor, vec3(0.0, 0.8, 1.0), surge);
+      lineAlpha += surge; // Brighten the lines
+      
+      gl_FragColor = vec4(finalColor, clamp((lineAlpha + centerGlow) * radialFade * uOpacity, 0.0, 1.0));
     }
   `
 });
@@ -915,11 +982,19 @@ function animate() {
     let swordY = particleY; // Default before latching
     
     if (swordStartYLatched !== null) {
-      // The camera looks at beamEndY at the end of the scroll.
-      // So we make the sword stop right there to ensure it's always in frame.
-      const swordEndY   = beamEndY - 2.0;
-      const swordDescT  = smoothstep(SWORD_SP_MORPH, SWORD_SP_END, sp);
-      swordY = THREE.MathUtils.lerp(swordStartYLatched, swordEndY, swordDescT);
+      if (sp <= 0.85) {
+          // Freefall down to exactly touch the grid
+          const dropT = smoothstep(0.32, 0.85, sp);
+          swordY = THREE.MathUtils.lerp(swordStartYLatched, beamEndY - 2.0, dropT);
+      } else if (sp <= 0.95) {
+          // Push deeply through the grid
+          const pushT = smoothstep(0.85, 0.95, sp);
+          swordY = THREE.MathUtils.lerp(beamEndY - 2.0, beamEndY - 8.0, pushT);
+      } else {
+          // Dive deep into the void WITH the camera
+          const diveT = smoothstep(0.95, 1.0, sp);
+          swordY = THREE.MathUtils.lerp(beamEndY - 8.0, beamEndY - 26.0, diveT);
+      }
     }
 
     swordModel.visible = sp > SWORD_SP_MORPH;
@@ -945,8 +1020,8 @@ function animate() {
   }
   
   // --- Sword Impact Shockwave ---
-  // Expanding floor rings that trigger precisely at the end of the scroll (90% -> 100%)
-  const impactT = smoothstep(0.90, 1.00, sp);
+  // Expanding floor rings that trigger precisely when the sword hits the grid (85% -> 95%)
+  const impactT = smoothstep(0.85, 0.95, sp);
   if (impactT > 0) { 
       const scale1 = THREE.MathUtils.lerp(1.0, 15.0, impactT);
       const scale2 = THREE.MathUtils.lerp(1.0, 25.0, Math.pow(impactT, 0.8));
@@ -967,6 +1042,28 @@ function animate() {
       
       // Fade in the cyber grid smoothly
       cyberGridMat.uniforms.uOpacity.value = op * 0.6;
+      
+      // Update the cyber grid physically (Ripple wave expands based on impactT)
+      cyberGridMat.uniforms.uImpactDist.value = impactT * 0.8; // Normalized UV dist is 0 to 0.5
+      
+      // Impact strength peaks around 0.87, then decays to 0 at 0.95
+      const impactPeak = smoothstep(0.85, 0.88, sp) * (1.0 - smoothstep(0.88, 0.95, sp));
+      cyberGridMat.uniforms.uImpactStrength.value = impactPeak;
+      
+      // Massive Flash of blue light at peak impact
+      impactLight.intensity = impactPeak * 2000;
+      
+      // Expand Volumetric Blue Smoke based on scroll position
+      impactSmokeMat.opacity = impactPeak * 0.8;
+      if (impactPeak > 0) {
+          const smokePos = impactSmokeGeo.attributes.position.array;
+          for (let i = 0; i < impactSmokeCount; i++) {
+              smokePos[i*3]   = impactSmokeVel[i*3] * impactT * 15.0;
+              smokePos[i*3+1] = impactSmokeVel[i*3+1] * impactT * 15.0; 
+              smokePos[i*3+2] = impactSmokeVel[i*3+2] * impactT * 15.0;
+          }
+          impactSmokeGeo.attributes.position.needsUpdate = true;
+      }
   } else {
       ring1Mat.opacity = 0;
       ring2Mat.opacity = 0;
@@ -977,8 +1074,8 @@ function animate() {
   if (swordStartYLatched !== null) {
       embersMesh.position.y = (beamEndY - 2.0); // Anchor to virtual floor
   }
-  // Fade in embers during the last 15% of the scroll
-  const embersFade = smoothstep(0.85, 0.95, sp);
+  // Fade in embers slightly earlier to match the impact
+  const embersFade = smoothstep(0.80, 0.95, sp);
   embersMat.opacity = embersFade * 0.8;
   
   if (embersFade > 0) {
@@ -994,19 +1091,35 @@ function animate() {
   }
 
   // ── CAMERA (x-z plane arc, plus tilt down at the end) ────────
-  // Tilt starts at 55% now (overlapping with riseT ending at 60%) to keep motion constant
-  const tiltT = smoothstep(0.55, 0.95, sp);
+  // Tilt starts at 32% (when sword spawns) and ends at 85% (when sword hits grid)
+  const tiltT = smoothstep(0.32, 0.85, sp);
   
   let finalCamR = camR;
-  let finalCamY = THREE.MathUtils.lerp(-2.5 + riseY * 0.15, beamEndY + 2.0, tiltT);
-  let lookY = THREE.MathUtils.lerp(1.5 + riseY * 0.18, beamEndY, tiltT);
+  // Camera drops to track the sword, stopping slightly ABOVE the grid to watch the penetration (+1.0)
+  let finalCamY = THREE.MathUtils.lerp(-2.5 + riseY * 0.15, beamEndY + 1.0, tiltT);
+  // Camera looks exactly at the impact point on the grid (-2.0)
+  let lookY = THREE.MathUtils.lerp(1.5 + riseY * 0.18, beamEndY - 2.0, tiltT);
   
-  // Dive disabled: camera stays at tilt position throughout
+  // Dive through the floor only AFTER the sword has penetrated (95% to 100%)
+  const camDiveT = smoothstep(0.95, 1.0, sp);
+  // Both drop 24 units. Since sword drops 18, the camera catches up to perfectly center the sword.
+  finalCamY -= camDiveT * 24.0;
+  lookY -= camDiveT * 24.0;
+
 
   camera.position.x = Math.sin(orbit) * finalCamR;
   camera.position.z = Math.cos(orbit) * finalCamR;
   camera.position.y = finalCamY;
   lookAt.set(0, lookY, 0);
+  
+  // --- Impact Camera Shake ---
+  const shakeIntensity = smoothstep(0.85, 0.88, sp) * (1.0 - smoothstep(0.88, 0.95, sp));
+  if (shakeIntensity > 0) {
+      camera.position.x += (Math.random() - 0.5) * 1.5 * shakeIntensity;
+      camera.position.y += (Math.random() - 0.5) * 1.5 * shakeIntensity;
+      camera.position.z += (Math.random() - 0.5) * 1.5 * shakeIntensity;
+  }
+
   camera.lookAt(lookAt);
 
   // ── FADE ──────────────────────────────────────────────────────

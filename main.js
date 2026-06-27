@@ -46,10 +46,16 @@ scrollDashes.forEach((dash, idx) => {
   });
 });
 
+// ── Mobile Detection ─────────────────────────────────────────────
+const isMobile = window.innerWidth < 768;
+
 // ── Renderer ─────────────────────────────────────────────────────
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
 // Lower pixel ratio max for much better performance (smooth & light)
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.25));
+renderer.setPixelRatio(isMobile
+  ? Math.min(window.devicePixelRatio, 1.0)
+  : Math.min(window.devicePixelRatio, 1.25)
+);
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -63,9 +69,9 @@ scene.background = new THREE.Color(0x000000);
 scene.fog = new THREE.FogExp2(0x000000, 0.016);
 
 // ── Camera ────────────────────────────────────────────────────────
-const CAM_NEAR_R = 7;
-const CAM_FAR_R = 13;
-const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.01, 300);
+const CAM_NEAR_R = isMobile ? 10 : 7;
+const CAM_FAR_R = isMobile ? 17 : 13;
+const camera = new THREE.PerspectiveCamera(isMobile ? 70 : 45, window.innerWidth / window.innerHeight, 0.01, 300);
 camera.position.set(0, -2.5, CAM_NEAR_R);
 const lookAt = new THREE.Vector3(0, 1.5, 0);
 camera.lookAt(lookAt);
@@ -74,7 +80,10 @@ camera.lookAt(lookAt);
 const composer = new EffectComposer(renderer);
 composer.addPass(new RenderPass(scene, camera));
 const bloomPass = new UnrealBloomPass(
-  new THREE.Vector2(window.innerWidth, window.innerHeight),
+  new THREE.Vector2(
+    isMobile ? window.innerWidth * 0.5 : window.innerWidth,
+    isMobile ? window.innerHeight * 0.5 : window.innerHeight
+  ),
   0.80, 0.50, 0.70
 );
 composer.addPass(bloomPass);
@@ -141,9 +150,10 @@ let scrollProgress = 0;
 
 // ── LENIS SMOOTH SCROLL ───────────────────────────────────────────
 const lenis = new Lenis({
-  duration: 1.2,
+  duration: isMobile ? 1.0 : 1.2,
   easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
-  smoothWheel: true
+  smoothWheel: true,
+  smoothTouch: isMobile // Enable touch momentum on mobile
 });
 
 function raf(time) {
@@ -869,6 +879,7 @@ window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight); composer.setSize(window.innerWidth, window.innerHeight);
   resizeStreak();
+  window.isMobileLive = window.innerWidth < 768;
 });
 
 // ── Swipe Rotation ────────────────────────────────────────────────
@@ -914,9 +925,9 @@ function animate() {
 
   // Zones
   // Distort cloud builds up later to prevent clipping early scroll
-  const distortT = smoothstep(0.60, 0.80, sp) * (1.0 - smoothstep(0.85, 0.98, sp));
+  const distortT = smoothstep(0.50, 0.70, sp) * (1.0 - smoothstep(0.75, 0.90, sp));
   // Blue fog fades in over a much wider range to slow down the transition
-  const fogT     = smoothstep(0.60, 0.90, sp);
+  const fogT     = smoothstep(0.50, 0.80, sp);
   // Dive underwater!
   const diveT    = 0; // dive disabled — camera stays in tilt position
 
@@ -982,17 +993,17 @@ function animate() {
     let swordY = particleY; // Default before latching
     
     if (swordStartYLatched !== null) {
-      if (sp <= 0.85) {
+      if (sp <= 0.65) {
           // Freefall down to exactly touch the grid
-          const dropT = smoothstep(0.32, 0.85, sp);
+          const dropT = smoothstep(0.32, 0.65, sp);
           swordY = THREE.MathUtils.lerp(swordStartYLatched, beamEndY - 2.0, dropT);
-      } else if (sp <= 0.95) {
+      } else if (sp <= 0.70) {
           // Push deeply through the grid
-          const pushT = smoothstep(0.85, 0.95, sp);
+          const pushT = smoothstep(0.65, 0.70, sp);
           swordY = THREE.MathUtils.lerp(beamEndY - 2.0, beamEndY - 8.0, pushT);
       } else {
           // Dive deep into the void WITH the camera
-          const diveT = smoothstep(0.95, 1.0, sp);
+          const diveT = smoothstep(0.70, 0.95, sp);
           swordY = THREE.MathUtils.lerp(beamEndY - 8.0, beamEndY - 26.0, diveT);
       }
     }
@@ -1020,8 +1031,8 @@ function animate() {
   }
   
   // --- Sword Impact Shockwave ---
-  // Expanding floor rings that trigger precisely when the sword hits the grid (85% -> 95%)
-  const impactT = smoothstep(0.85, 0.95, sp);
+  // Expanding floor rings that trigger precisely when the sword hits the grid
+  const impactT = smoothstep(0.65, 0.75, sp);
   if (impactT > 0) { 
       const scale1 = THREE.MathUtils.lerp(1.0, 15.0, impactT);
       const scale2 = THREE.MathUtils.lerp(1.0, 25.0, Math.pow(impactT, 0.8));
@@ -1046,8 +1057,8 @@ function animate() {
       // Update the cyber grid physically (Ripple wave expands based on impactT)
       cyberGridMat.uniforms.uImpactDist.value = impactT * 0.8; // Normalized UV dist is 0 to 0.5
       
-      // Impact strength peaks around 0.87, then decays to 0 at 0.95
-      const impactPeak = smoothstep(0.85, 0.88, sp) * (1.0 - smoothstep(0.88, 0.95, sp));
+      // Impact strength peaks around 0.67, then decays to 0 at 0.75
+      const impactPeak = smoothstep(0.65, 0.68, sp) * (1.0 - smoothstep(0.68, 0.75, sp));
       cyberGridMat.uniforms.uImpactStrength.value = impactPeak;
       
       // Massive Flash of blue light at peak impact
@@ -1075,7 +1086,7 @@ function animate() {
       embersMesh.position.y = (beamEndY - 2.0); // Anchor to virtual floor
   }
   // Fade in embers slightly earlier to match the impact
-  const embersFade = smoothstep(0.80, 0.95, sp);
+  const embersFade = smoothstep(0.60, 0.75, sp);
   embersMat.opacity = embersFade * 0.8;
   
   if (embersFade > 0) {
@@ -1091,8 +1102,8 @@ function animate() {
   }
 
   // ── CAMERA (x-z plane arc, plus tilt down at the end) ────────
-  // Tilt starts at 32% (when sword spawns) and ends at 85% (when sword hits grid)
-  const tiltT = smoothstep(0.32, 0.85, sp);
+  // Tilt starts at 32% (when sword spawns) and ends at 65% (when sword hits grid)
+  const tiltT = smoothstep(0.32, 0.65, sp);
   
   let finalCamR = camR;
   // Camera drops to track the sword, stopping slightly ABOVE the grid to watch the penetration (+1.0)
@@ -1100,8 +1111,8 @@ function animate() {
   // Camera looks exactly at the impact point on the grid (-2.0)
   let lookY = THREE.MathUtils.lerp(1.5 + riseY * 0.18, beamEndY - 2.0, tiltT);
   
-  // Dive through the floor only AFTER the sword has penetrated (95% to 100%)
-  const camDiveT = smoothstep(0.95, 1.0, sp);
+  // Dive through the floor only AFTER the sword has penetrated (70% to 95%)
+  const camDiveT = smoothstep(0.70, 0.95, sp);
   // Both drop 24 units. Since sword drops 18, the camera catches up to perfectly center the sword.
   finalCamY -= camDiveT * 24.0;
   lookY -= camDiveT * 24.0;
@@ -1116,7 +1127,7 @@ function animate() {
   lookAt.set(0, lookY, 0);
   
   // --- Impact Camera Shake ---
-  const shakeIntensity = smoothstep(0.85, 0.88, sp) * (1.0 - smoothstep(0.88, 0.95, sp));
+  const shakeIntensity = smoothstep(0.65, 0.68, sp) * (1.0 - smoothstep(0.68, 0.75, sp));
   if (shakeIntensity > 0) {
       camera.position.x += (Math.random() - 0.5) * 1.5 * shakeIntensity;
       camera.position.y += (Math.random() - 0.5) * 1.5 * shakeIntensity;

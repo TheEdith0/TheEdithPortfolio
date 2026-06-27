@@ -523,3 +523,25 @@ body {
   line-height: 1.6;
   color: rgba(255,255,255,0.6);
 }
+
+/* Cinematic Letterboxing */
+.cinema-bar {
+  position: fixed;
+  left: 0;
+  width: 100vw;
+  height: 12vh;
+  background: #000;
+  z-index: 1000;
+  pointer-events: none;
+  transition: transform 0.1s ease-out;
+}
+
+#cinema-bar-top {
+  top: 0;
+  transform: translateY(-100%);
+}
+
+#cinema-bar-bottom {
+  bottom: 0;
+  transform: translateY(100%);
+}

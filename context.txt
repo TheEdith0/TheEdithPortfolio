@@ -11,24 +11,25 @@ A 3D interactive web showcase for a premium ceiling lamp ("Lumière"), built usi
    - PointLight (flickering bulb) and SpotLight.
    - `UnrealBloomPass` for premium glowing effects and bloom.
 3. **Particle Systems (God Rays & Ambient)**:
-   - **Volumetric Beam / God Rays**: A cone of light emanating from the lamp downwards, created with two layers of particles: 
-     - 4,300 fine dust motes.
-     - 200 larger "bokeh" orbs.
-   - **Animated Helix Trails**: 3 glowing comet-like streaks that spiral downward along the beam in a helix path. Implemented using a custom `ShaderMaterial` with `gl_PointCoord` circular discard for perfect spherical glowing heads and fading tails.
-   - **Ambient Particles**: 1,400 drifting dust particles and 600 static background stars.
+   - **Volumetric Beam / God Rays**: A cone of light emanating from the lamp downwards.
+   - **Animated Helix Trails**: 3 glowing comet-like streaks that spiral downward along the beam in a helix path.
+   - **Ambient Particles**: Drifting dust particles and static background stars.
 4. **Scroll-Driven Animation**:
    - **Phase 1 (Zoom Out, 0–38% scroll)**: The camera smoothly pulls back from a close-up of the lamp.
    - **Phase 2 (Orbit & Rise, 38–100% scroll)**: The camera orbits 270° around the scene while the lamp and its attached particle systems move upwards.
 
-## File Structure
-- `index.html`: The main entry point, containing the Three.js canvas container, the overlay text ("Lumière", "Statement Lighting"), a CSS-based volumetric cone (`#light-cone`), and a 2D streak overlay canvas.
-- `style.css`: Contains styling for the layout, the animated loading screen (pulsing bulb), typography, overlay UI, and the height spacer (`#scroll-spacer`) to enable deep scrolling.
-- `main.js`: The primary Three.js logic file handling initialization, scene setup, model loading, custom shaders, scroll event listeners, and the animation loop.
+## V5 Additions & Critical Project Constraints 
+**(Always check these rules before modifying code to prevent breaking established visuals):**
 
-## Technologies Used
-- HTML, CSS, JavaScript (Vanilla)
-- Three.js (`three` + `GLTFLoader`, `DRACOLoader`, `EffectComposer`, `UnrealBloomPass`)
-- Vite (local development server)
-
-## Current State
-The project is currently configured to its "v5" state, retaining all the rich volumetric lighting, HTML overlays, and animated spiraling helix trails.
+1. **Sword Sequence (`sword.glb`)**:
+   - A glowing precursor particle falls from the lamp starting at 22% scroll.
+   - At 32% scroll, the particle erupts into the `sword.glb` model.
+   - **Camera Constraints**: The camera MUST NEVER dive down to the physical floor (`Y = -35`). The camera remains high (`Y ≈ 1.5`) and tilts down to look at the bottom of the light beam (`beamEndY`).
+   - **Sword Descent Limit**: Because the camera stays high, the sword stops at `beamEndY - 2.0` (mid-air) so it remains perfectly in frame. It does NOT drop to the glass floor.
+2. **Sword Materials & Lighting**:
+   - **PRESERVE ORIGINAL TEXTURES**: The GLTF materials for the sword are untouched (no overriding `color` or `metalness`).
+   - **Golden Edge Glow**: Achieved using two external `PointLight` objects (`bladeLight1`, `bladeLight2`) that perfectly track the sword's Y-position, casting golden light onto the metallic blades from the outside.
+3. **Impact Shockwave**:
+   - Two expanding golden rings (`shockwaveGroup`) trigger from 90% -> 100% scroll.
+   - **Positioning**: They are anchored exactly at the sword's stopping point (`beamEndY - 2.0`), NOT the physical floor, ensuring they are visible to the camera.
+   - **Visibility**: The rings fade IN and stay visible at 100% scroll (opacity does not drop to 0 at the end).

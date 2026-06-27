@@ -11,14 +11,7 @@
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <div id="error-log" style="position:fixed; top:0; left:0; z-index:99999; background:red; color:white; font-family:monospace; padding:10px; display:none;"></div>
-  <script>
-    window.addEventListener('error', function(e) {
-      const el = document.getElementById('error-log');
-      el.style.display = 'block';
-      el.innerText += e.message + '\n' + (e.error && e.error.stack ? e.error.stack : '') + '\n\n';
-    });
-  </script>
+
 
   <!-- Loading Screen -->
   <div id="loader">
@@ -115,6 +108,9 @@
 
   <!-- Custom Scroll Indicator -->
   <div id="scroll-indicator">
+    <div class="scroll-progress-line">
+      <div class="scroll-progress-fill" id="scroll-progress-fill"></div>
+    </div>
     <div class="scroll-dash"></div>
     <div class="scroll-dash"></div>
     <div class="scroll-dash"></div>

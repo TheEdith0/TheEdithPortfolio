@@ -369,6 +369,25 @@ body {
   width: 36px;
 }
 
+.scroll-progress-line {
+  position: absolute;
+  right: -12px;
+  top: 0;
+  width: 2px;
+  height: 100%;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.scroll-progress-fill {
+  width: 100%;
+  height: 0%;
+  background: var(--gold-light);
+  box-shadow: 0 0 10px var(--gold);
+  transition: height 0.1s ease-out;
+}
+
 @media (max-width: 600px) {
   #scroll-indicator { right: 20px; }
 }

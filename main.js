@@ -137,10 +137,23 @@ const smoothstep = (edge0, edge1, x) => {
 
 // ── Scroll ────────────────────────────────────────────────────────
 let scrollProgress = 0;
-window.addEventListener('scroll', () => {
-  const maxS = document.body.scrollHeight - window.innerHeight;
-  scrollProgress = maxS > 0 ? Math.min(window.scrollY / maxS, 1) : 0;
-}, { passive: true });
+
+// ── LENIS SMOOTH SCROLL ───────────────────────────────────────────
+const lenis = new Lenis({
+  duration: 1.2,
+  easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
+  smoothWheel: true
+});
+
+function raf(time) {
+  lenis.raf(time);
+  requestAnimationFrame(raf);
+}
+requestAnimationFrame(raf);
+
+lenis.on('scroll', ({ progress }) => {
+  scrollProgress = progress;
+});
 
 // ── Lighting ─────────────────────────────────────────────────────
 scene.add(new THREE.AmbientLight(0x1a1008, 0.8));
@@ -246,7 +259,7 @@ const smokeFS = `
     
     vec3 colA = vec3(1.0, 0.6, 0.1);
     vec3 colB = vec3(0.1, 0.4, 1.0);
-    vec3 finalCol = mix(colA, colB, smoothstep(0.3, 0.7, uDistortT) + n2 * 0.2);
+    vec3 finalCol = mix(colA, colB, smoothstep(0.0, 1.0, uColorT) + n2 * 0.15);
     
     float alpha = n * alphaEdge * (uDistortT * 0.85);
     gl_FragColor = vec4(finalCol, alpha);
@@ -254,9 +267,17 @@ const smokeFS = `
 `;
 const smokeSphereGeo = new THREE.SphereGeometry(22, 64, 64);
 const smokeSphereMat = new THREE.ShaderMaterial({
-  vertexShader: smokeVS, fragmentShader: smokeFS,
-  uniforms: { uTime: { value: 0 }, uDistortT: { value: 0 } },
-  transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.BackSide,
+  vertexShader: smokeVS,
+  fragmentShader: smokeFS,
+  uniforms: {
+    uTime: { value: 0 },
+    uDistortT: { value: 0 },
+    uColorT: { value: 0 }
+  },
+  transparent: true,
+  depthWrite: false,
+  blending: THREE.AdditiveBlending,
+  side: THREE.BackSide,
 });
 const smokeSphere = new THREE.Mesh(smokeSphereGeo, smokeSphereMat);
 smokeSphere.position.set(0, -32, 0); // Positioned in the deep dive area
@@ -266,7 +287,7 @@ scene.add(smokeSphere);
 // ──────────────────────────────────────────────────────────────────
 //  REFLECTIVE GLASS FLOOR (Phase 3)
 // ──────────────────────────────────────────────────────────────────
-const floorRenderTarget = new THREE.WebGLCubeRenderTarget(256);
+const floorRenderTarget = new THREE.WebGLCubeRenderTarget(128);
 const floorCubeCam = new THREE.CubeCamera(0.1, 100, floorRenderTarget);
 floorCubeCam.position.set(0, -34.5, 0);
 scene.add(floorCubeCam);
@@ -641,19 +662,7 @@ window.addEventListener('pointercancel', () => { isDragging = false; });
 // ──────────────────────────────────────────────────────────────────
 const clock = new THREE.Clock();
 let prevT = 0;
-
-// ── LENIS SMOOTH SCROLL ───────────────────────────────────────────
-const lenis = new Lenis({
-  duration: 1.2,
-  easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
-  smoothWheel: true
-});
-
-function raf(time) {
-  lenis.raf(time);
-  requestAnimationFrame(raf);
-}
-requestAnimationFrame(raf);
+let cubeFrame = 0;
 
 function animate() {
   requestAnimationFrame(animate); 
@@ -671,8 +680,8 @@ function animate() {
   const sp = scrollProgress;
 
   // Zones
-  // Distort cloud builds up earlier and then completely fades away as we enter the blue water
-  const distortT = smoothstep(0.40, 0.65, sp) * (1.0 - smoothstep(0.70, 0.85, sp));
+  // Distort cloud builds up later to prevent clipping early scroll
+  const distortT = smoothstep(0.60, 0.80, sp) * (1.0 - smoothstep(0.85, 0.98, sp));
   // Blue fog fades in over a much wider range to slow down the transition
   const fogT     = smoothstep(0.60, 0.90, sp);
   // Dive underwater!
@@ -831,12 +840,14 @@ function animate() {
     smokeSphere.visible = distortT > 0.005;
     smokeSphereMat.uniforms.uTime.value = t;
     smokeSphereMat.uniforms.uDistortT.value = distortT;
-    smokeSphere.position.y = beamEndY - 25.0; // Fixed center
+    smokeSphereMat.uniforms.uColorT.value = fogT;
+    smokeSphere.position.y = beamEndY - 20.0; // Fixed center
   }
 
   // Update Floor CubeCamera so reflections are live
-  if (floorCubeCam) {
-    floorMesh.visible = false; // Hide floor before capturing reflection
+  cubeFrame++;
+  if (floorCubeCam && cubeFrame % 3 === 0) {
+    floorMesh.visible = false;
     floorCubeCam.update(renderer, scene);
     floorMesh.visible = true;
   }
@@ -877,6 +888,9 @@ function animate() {
   // ── SCROLL INDICATOR ────────────────────────────────────────
   // Ensure the scroll indicator stays visible at all times
   document.getElementById('scroll-indicator').style.opacity = "1.0";
+
+  const progressFill = document.getElementById('scroll-progress-fill');
+  if (progressFill) progressFill.style.height = String(sp * 100) + '%';
 
   if (scrollDashes.length > 0) {
     const total = scrollDashes.length;

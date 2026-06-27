@@ -48,7 +48,8 @@ scrollDashes.forEach((dash, idx) => {
 
 // ── Renderer ─────────────────────────────────────────────────────
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+// Lower pixel ratio max for much better performance (smooth & light)
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.25));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -618,6 +619,60 @@ gltfLdr.load('plafonnier/source/Plafonnier couloir RdC.glb',
   (err) => { console.error(err); loaderTxt.textContent = 'Error'; }
 );
 
+// ── SWORD & PRECURSOR ─────────────────────────────────────────────
+let swordModel = null;
+let swordLoaded = false;
+let swordStartYLatched = null; // Used to latch the Y position at the morph threshold
+
+gltfLdr.load('./sword.glb', (gltf) => {
+  swordModel = gltf.scene;
+  // Auto-scale sword to be ~6 units long max
+  const box = new THREE.Box3().setFromObject(swordModel);
+  const size = box.getSize(new THREE.Vector3());
+  const maxDim = Math.max(size.x, size.y, size.z);
+  // Prevent division by zero if geometry is empty
+  const baseScale = maxDim > 0 ? 6.0 / maxDim : 1.0;
+  
+  swordModel.scale.setScalar(0); // starts at 0, animated in animate()
+  swordModel.userData.baseScale = baseScale; // Store for the animate loop
+  
+  // Center the sword geometry around its local origin
+  const center = box.getCenter(new THREE.Vector3());
+  swordModel.traverse(c => {
+    if (c.isMesh) {
+      c.geometry.translate(-center.x, -center.y, -center.z);
+    }
+  });
+
+  swordModel.rotation.x = Math.PI; // tip pointing downward
+  swordModel.visible = false;
+  
+  swordModel.traverse(c => {
+    if (!c.isMesh) return;
+    c.castShadow = true;
+    if (c.material) {
+      c.material.metalness = 0.9;
+      c.material.roughness = 0.1;
+      c.material.envMapIntensity = 2.0;
+      c.material.needsUpdate = true;
+    }
+  });
+  scene.add(swordModel);
+  swordLoaded = true;
+}, undefined, (err) => console.error('sword:', err));
+
+// — Sword Precursor Particle ——————————————————————————
+const precursorGeo = new THREE.SphereGeometry(0.12, 16, 16);
+const precursorMat = new THREE.MeshStandardMaterial({
+  color: 0xffd080,
+  emissive: 0xffa030,
+  emissiveIntensity: 8,
+  transparent: true,
+  opacity: 0,
+});
+const precursorMesh = new THREE.Mesh(precursorGeo, precursorMat);
+scene.add(precursorMesh);
+
 // ── Env Map ───────────────────────────────────────────────────────
 (async () => {
   try {
@@ -685,14 +740,14 @@ function animate() {
   // Blue fog fades in over a much wider range to slow down the transition
   const fogT     = smoothstep(0.60, 0.90, sp);
   // Dive underwater!
-  const diveT    = smoothstep(0.85, 1.00, sp);
+  const diveT    = 0; // dive disabled — camera stays in tilt position
 
-  // Compressed zoom & rise so the initial scroll feels punchy and fast
+  // Rise now spans from 15% to 60% scroll to eliminate the 50% dead zone
   const zoomT  = easeInOut(Math.min(sp / 0.20, 1.0));
-  const riseT  = easeOut(Math.min(Math.max((sp - 0.15) / 0.30, 0.0), 1.0));
+  const riseT  = easeOut(Math.min(Math.max((sp - 0.15) / 0.45, 0.0), 1.0));
 
   const camR = THREE.MathUtils.lerp(CAM_NEAR_R, CAM_FAR_R, zoomT);
-  const orbit = riseT * Math.PI * 1.5 + userOrbit;   // combine scroll orbit and user swipe orbit
+  const orbit = riseT * Math.PI * 1.5 + userOrbit + t * 0.12;   // scroll orbit + swipe + continuous auto-rotation
   const riseY = riseT * 28.0;
   let beamEndY = -CONE_H;
 
@@ -714,18 +769,72 @@ function animate() {
 
   beamEndY = beamGroup.position.y - CONE_H;
 
+  // ── SWORD DROP SEQUENCE ──────────────────────────────
+  // Phase 1: precursor particle falls (sp 0.22 → 0.36)
+  // Phase 2: sword materialises + descends (sp 0.32 → 1.00)
+
+  const SWORD_SP_START  = 0.22; // particle appears
+  const SWORD_SP_MORPH  = 0.32; // sword appears, particle fades
+  const SWORD_SP_END    = 1.00; // end of scroll
+
+  // Particle spawn Y = bulb world Y at the moment it appears
+  const precursorSpawnY = initBulbY + riseY; // world Y of bulb
+
+  // --- Precursor particle phase ---
+  const particleT   = smoothstep(SWORD_SP_START, SWORD_SP_MORPH, sp);
+  const particleFade = 1.0 - smoothstep(SWORD_SP_MORPH - 0.01, SWORD_SP_MORPH + 0.03, sp);
+
+  // Particle drops 8 world units over the 0.22→0.32 scroll window
+  const particleY = precursorSpawnY - particleT * 8.0;
+
+  precursorMesh.visible = sp > SWORD_SP_START;
+  precursorMesh.position.set(0, particleY, 0);
+  precursorMat.opacity = particleT * particleFade;
+  precursorMat.emissiveIntensity = 8 * particleT;
+
+  // --- Sword descent phase ---
+  if (swordLoaded) {
+    const morphT   = smoothstep(SWORD_SP_MORPH, SWORD_SP_MORPH + 0.04, sp);
+    
+    // Latch the exact Y position at the morph threshold to prevent drifting
+    if (sp >= SWORD_SP_MORPH && swordStartYLatched === null) {
+      swordStartYLatched = precursorSpawnY - 8.0;
+    }
+    
+    let swordY = particleY; // Default before latching
+    
+    if (swordStartYLatched !== null) {
+      // The camera looks at beamEndY at the end of the scroll.
+      // So we make the sword stop right there to ensure it's always in frame.
+      const swordEndY   = beamEndY - 2.0;
+      const swordDescT  = smoothstep(SWORD_SP_MORPH, SWORD_SP_END, sp);
+      swordY = THREE.MathUtils.lerp(swordStartYLatched, swordEndY, swordDescT);
+    }
+
+    swordModel.visible = sp > SWORD_SP_MORPH;
+    swordModel.position.set(0, swordY, 0);
+    // Slow self-rotation on Y axis for visual flair
+    swordModel.rotation.y = t * 0.8;
+    // Scale from 0 → full over morphT for materialise effect
+    const sc = morphT * swordModel.userData.baseScale;
+    swordModel.scale.setScalar(sc);
+    
+    // Give sword a bright emissive bloom pulse as it materialises
+    swordModel.traverse(c => {
+      if (!c.isMesh || !c.material) return;
+      c.material.emissiveIntensity = THREE.MathUtils.lerp(3.0, 0.5, morphT);
+    });
+  }
+
   // ── CAMERA (x-z plane arc, plus tilt down at the end) ────────
-  const tiltT = smoothstep(0.65, 0.95, sp);
+  // Tilt starts at 55% now (overlapping with riseT ending at 60%) to keep motion constant
+  const tiltT = smoothstep(0.55, 0.95, sp);
   
   let finalCamR = camR;
   let finalCamY = THREE.MathUtils.lerp(-2.5 + riseY * 0.15, beamEndY + 2.0, tiltT);
   let lookY = THREE.MathUtils.lerp(1.5 + riseY * 0.18, beamEndY, tiltT);
   
-  // DIVE logic: bring camera much further down and closer in!
-  finalCamY = THREE.MathUtils.lerp(finalCamY, beamEndY - 45.0, diveT);
-  finalCamR = THREE.MathUtils.lerp(finalCamR, 2.0, diveT);
-  // Make the camera look straight ahead or slightly down when diving, rather than looking up at the clouds
-  lookY = THREE.MathUtils.lerp(lookY, beamEndY - 55.0, diveT);
+  // Dive disabled: camera stays at tilt position throughout
 
   camera.position.x = Math.sin(orbit) * finalCamR;
   camera.position.z = Math.cos(orbit) * finalCamR;

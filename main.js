@@ -306,6 +306,71 @@ floorMesh.position.set(0, -35, 0);
 scene.add(floorMesh);
 
 // ──────────────────────────────────────────────────────────────────
+//  IMPACT SHOCKWAVE (Floor Ring Ripple)
+// ──────────────────────────────────────────────────────────────────
+const shockwaveGroup = new THREE.Group();
+shockwaveGroup.position.set(0, -34.9, 0); // Just above floor to prevent z-fighting
+shockwaveGroup.rotation.x = -Math.PI / 2;
+scene.add(shockwaveGroup);
+
+const ring1Geo = new THREE.RingGeometry(0.8, 1.0, 64);
+const ring1Mat = new THREE.MeshBasicMaterial({ color: 0xffdd66, transparent: true, blending: THREE.AdditiveBlending, opacity: 0, depthWrite: false });
+const ring1 = new THREE.Mesh(ring1Geo, ring1Mat);
+shockwaveGroup.add(ring1);
+
+const ring2Geo = new THREE.RingGeometry(0.95, 1.0, 64);
+const ring2Mat = new THREE.MeshBasicMaterial({ color: 0xffaa00, transparent: true, blending: THREE.AdditiveBlending, opacity: 0, depthWrite: false });
+const ring2 = new THREE.Mesh(ring2Geo, ring2Mat);
+shockwaveGroup.add(ring2);
+
+// ──────────────────────────────────────────────────────────────────
+//  HOLOGRAPHIC CYBER-GRID (Virtual Floor)
+// ──────────────────────────────────────────────────────────────────
+const cyberGridGeo = new THREE.PlaneGeometry(80, 80);
+const cyberGridMat = new THREE.ShaderMaterial({
+  transparent: true,
+  blending: THREE.AdditiveBlending,
+  depthWrite: false,
+  uniforms: {
+    uColor: { value: new THREE.Color(0xff2255) }, // Neon red-pink to match glitch
+    uOpacity: { value: 0.0 }
+  },
+  vertexShader: `
+    varying vec2 vUv;
+    void main() {
+      vUv = uv;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+  `,
+  fragmentShader: `
+    uniform vec3 uColor;
+    uniform float uOpacity;
+    varying vec2 vUv;
+    
+    void main() {
+      // Generate grid lines
+      vec2 grid = fract(vUv * 40.0);
+      float lx = smoothstep(0.92, 1.0, grid.x) + smoothstep(0.08, 0.0, grid.x);
+      float ly = smoothstep(0.92, 1.0, grid.y) + smoothstep(0.08, 0.0, grid.y);
+      float lineAlpha = clamp(lx + ly, 0.0, 1.0);
+      
+      // Radial fade to mask the square edges
+      float dist = distance(vUv, vec2(0.5));
+      float radialFade = 1.0 - smoothstep(0.1, 0.5, dist);
+      
+      // Add a subtle glowing center
+      float centerGlow = (1.0 - smoothstep(0.0, 0.15, dist)) * 0.5;
+      
+      gl_FragColor = vec4(uColor, (lineAlpha + centerGlow) * radialFade * uOpacity);
+    }
+  `
+});
+const cyberGridMesh = new THREE.Mesh(cyberGridGeo, cyberGridMat);
+cyberGridMesh.rotation.x = -Math.PI / 2;
+// Add it to the shockwave group so it anchors perfectly to the sword
+shockwaveGroup.add(cyberGridMesh);
+
+// ──────────────────────────────────────────────────────────────────
 //  HELIX TRAILS — 3 spirals, 120° apart, each with 90-point trail
 // ──────────────────────────────────────────────────────────────────
 const TRAIL_N = 240;   // denser particle count for clustered strings
@@ -838,6 +903,35 @@ function animate() {
   } else if (swordModel && swordModel.userData.lights) {
     swordModel.userData.lights[0].visible = false;
     swordModel.userData.lights[1].visible = false;
+  }
+  
+  // --- Sword Impact Shockwave ---
+  // Expanding floor rings that trigger precisely at the end of the scroll (90% -> 100%)
+  const impactT = smoothstep(0.90, 1.00, sp);
+  if (impactT > 0) { 
+      const scale1 = THREE.MathUtils.lerp(1.0, 15.0, impactT);
+      const scale2 = THREE.MathUtils.lerp(1.0, 25.0, Math.pow(impactT, 0.8));
+      
+      // Update position to be exactly at the sword's final stop point, not the physical floor!
+      if (swordStartYLatched !== null) {
+          shockwaveGroup.position.y = (beamEndY - 2.0); // swordEndY
+      }
+
+      // Fades IN as it expands and stays visible at the end
+      const op = impactT;
+      
+      ring1.scale.setScalar(scale1);
+      ring1Mat.opacity = op * 0.5;
+      
+      ring2.scale.setScalar(scale2);
+      ring2Mat.opacity = op * 0.3;
+      
+      // Fade in the cyber grid smoothly
+      cyberGridMat.uniforms.uOpacity.value = op * 0.6;
+  } else {
+      ring1Mat.opacity = 0;
+      ring2Mat.opacity = 0;
+      cyberGridMat.uniforms.uOpacity.value = 0;
   }
 
   // ── CAMERA (x-z plane arc, plus tilt down at the end) ────────

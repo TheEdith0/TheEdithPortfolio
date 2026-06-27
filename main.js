@@ -366,8 +366,8 @@ const cyberGridMat = new THREE.ShaderMaterial({
   `
 });
 const cyberGridMesh = new THREE.Mesh(cyberGridGeo, cyberGridMat);
-cyberGridMesh.rotation.x = -Math.PI / 2; // Makes the grid stand vertically like a wall behind the sword
 // Add it to the shockwave group so it anchors perfectly to the sword
+// No rotation needed here because shockwaveGroup is already rotated flat
 shockwaveGroup.add(cyberGridMesh);
 
 // ──────────────────────────────────────────────────────────────────

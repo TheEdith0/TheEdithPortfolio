@@ -19,6 +19,7 @@ import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 
 // ── DOM ──────────────────────────────────────────────────────────
 const canvas = document.getElementById('three-canvas');
@@ -29,7 +30,7 @@ const lightConeEl = document.getElementById('light-cone');
 const streakCanvas = document.getElementById('streak-canvas');
 const overlayEl = document.getElementById('overlay');
 const welcomeTextEl = document.getElementById('welcome-text');
-const fogLayerEl = document.getElementById('fog-layer');
+// (fogLayerEl removed)
 const nextSectionEl = document.getElementById('next-section');
 const scrollDashes = document.querySelectorAll('.scroll-dash');
 const sctx = streakCanvas.getContext('2d');
@@ -76,6 +77,55 @@ const bloomPass = new UnrealBloomPass(
   0.80, 0.50, 0.70
 );
 composer.addPass(bloomPass);
+
+// ──────────────────────────────────────────────────────────────────
+//  CUSTOM RGB GLITCH SHADER PASS (Phase 5)
+// ──────────────────────────────────────────────────────────────────
+const GlitchShader = {
+  uniforms: {
+    tDiffuse: { value: null },
+    uTime: { value: 0 },
+    uAmount: { value: 0.0 }
+  },
+  vertexShader: `
+    varying vec2 vUv;
+    void main() {
+      vUv = uv;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+  `,
+  fragmentShader: `
+    uniform sampler2D tDiffuse;
+    uniform float uTime;
+    uniform float uAmount;
+    varying vec2 vUv;
+    
+    // Quick noise
+    float rand(vec2 co){ return fract(sin(dot(co.xy ,vec2(12.9898,78.233))) * 43758.5453); }
+
+    void main() {
+      vec2 uv = vUv;
+      float intensity = uAmount;
+
+      // Scanline tears
+      float r1 = rand(vec2(uTime, uv.y));
+      if(r1 < intensity * 0.2) {
+        uv.x += (rand(vec2(uTime * 2.0, uv.y)) - 0.5) * intensity * 0.3;
+      }
+      
+      // Chromatic Aberration
+      vec2 offset = vec2(intensity * 0.05, 0.0);
+      vec4 cr = texture2D(tDiffuse, uv + offset);
+      vec4 cg = texture2D(tDiffuse, uv);
+      vec4 cb = texture2D(tDiffuse, uv - offset);
+      
+      gl_FragColor = vec4(cr.r, cg.g, cb.b, cg.a);
+    }
+  `
+};
+
+const glitchPass = new ShaderPass(GlitchShader);
+composer.addPass(glitchPass);
 
 // ── Easing ────────────────────────────────────────────────────────
 const easeInOut = t => t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
@@ -152,136 +202,86 @@ const beamGroup = new THREE.Group();
 scene.add(beamGroup);
 
 // ──────────────────────────────────────────────────────────────────
-//  LIQUID DISTORTION BARRIER PLANE
+//  VOLUMETRIC SMOKE SPHERE (Phase 2)
 // ──────────────────────────────────────────────────────────────────
-const distortionVS = `
+const smokeVS = `
   varying vec2 vUv;
-  uniform float uTime;
-  uniform float uDistortT;
-
-  float hash(vec2 p) {
-    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
-  }
-  float noise(vec2 p) {
-    vec2 i = floor(p); vec2 f = fract(p);
-    vec2 u = f * f * (3.0 - 2.0 * f);
-    return mix(mix(hash(i), hash(i + vec2(1,0)), u.x),
-               mix(hash(i + vec2(0,1)), hash(i + vec2(1,1)), u.x), u.y);
-  }
-  float fbm(vec2 p) {
-    float v = 0.0, a = 0.5;
-    for (int i = 0; i < 5; i++) {
-      v += a * noise(p); p = p * 2.1 + vec2(1.7, 9.2); a *= 0.5;
-    }
-    return v;
-  }
-
+  varying vec3 vPos;
   void main() {
     vUv = uv;
-    vec3 pos = position;
-    // Slower, smoother boiling animation
-    float n = fbm(uv * 2.5 + vec2(uTime * 0.03, uTime * 0.015));
-    
-    // Geometry is permanently displaced (no uDistortT here), we fade it in via opacity instead
-    pos.z += n * 12.0;
-    // Lateral rippling
-    pos.x += fbm(uv * 3.5 + uTime * 0.01) * 3.0;
-    pos.y += fbm(uv * 3.5 - uTime * 0.01) * 3.0;
-    
-    gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
+    vPos = position;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
   }
 `;
 
-const distortionFS = `
+const smokeFS = `
   varying vec2 vUv;
+  varying vec3 vPos;
   uniform float uTime;
   uniform float uDistortT;
 
-  float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
-  float noise(vec2 p) {
-    vec2 i = floor(p); vec2 f = fract(p);
-    vec2 u = f * f * (3.0 - 2.0 * f);
-    return mix(mix(hash(i), hash(i + vec2(1,0)), u.x),
-               mix(hash(i + vec2(0,1)), hash(i + vec2(1,1)), u.x), u.y);
+  float hash(vec3 p) {
+    p = fract(p * 0.3183099 + .1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z));
   }
-  float fbm(vec2 p) {
-    float v = 0.0, a = 0.5;
-    for (int i = 0; i < 5; i++) { v += a * noise(p); p = p * 2.1 + vec2(1.7, 9.2); a *= 0.5; }
-    return v;
+  float noise(vec3 x) {
+    vec3 i = floor(x); vec3 f = fract(x); f = f * f * (3.0 - 2.0 * f);
+    return mix(mix(mix(hash(i + vec3(0,0,0)), hash(i + vec3(1,0,0)), f.x),
+                   mix(hash(i + vec3(0,1,0)), hash(i + vec3(1,1,0)), f.x), f.y),
+               mix(mix(hash(i + vec3(0,0,1)), hash(i + vec3(1,0,1)), f.x),
+                   mix(hash(i + vec3(0,1,1)), hash(i + vec3(1,1,1)), f.x), f.y), f.z);
+  }
+  float fbm(vec3 p) {
+    float f = 0.0;
+    f += 0.5000 * noise(p); p *= 2.02; f += 0.2500 * noise(p); p *= 2.03;
+    f += 0.1250 * noise(p); p *= 2.01; f += 0.0625 * noise(p); return f / 0.9375;
   }
 
   void main() {
-    // Slower noise for colors
-    float n = fbm(vUv * 3.0 + uTime * 0.015);
-    float n2 = fbm(vUv * 7.0 + uTime * 0.01 + vec2(3.14));
+    float d = length(vPos);
+    float alphaEdge = smoothstep(22.0, 15.0, d);
     
-    float edge = smoothstep(0.0, 0.15, vUv.y) * smoothstep(1.0, 0.85, vUv.y)
-               * smoothstep(0.0, 0.10, vUv.x) * smoothstep(1.0, 0.90, vUv.x);
-               
-    // Fade in purely through opacity
-    float alpha = uDistortT * n * 0.65 * edge;
+    vec3 p = vPos * 0.15 + vec3(0.0, uTime * -0.5, uTime * 0.2);
+    float n = fbm(p);
+    float n2 = fbm(p * 2.0 - vec3(uTime));
     
-    // Reverted to golden-yellow warm colors
-    vec3 cold = vec3(1.00, 0.85, 0.40);
-    vec3 hot  = vec3(1.00, 1.00, 0.92);
-    vec3 col  = mix(cold, hot, n2);
-    gl_FragColor = vec4(col, alpha);
+    vec3 colA = vec3(1.0, 0.6, 0.1);
+    vec3 colB = vec3(0.1, 0.4, 1.0);
+    vec3 finalCol = mix(colA, colB, smoothstep(0.3, 0.7, uDistortT) + n2 * 0.2);
+    
+    float alpha = n * alphaEdge * (uDistortT * 0.85);
+    gl_FragColor = vec4(finalCol, alpha);
   }
 `;
-
-const distortMat = new THREE.ShaderMaterial({
-  vertexShader: distortionVS,
-  fragmentShader: distortionFS,
-  transparent: true,
-  depthWrite: false,
-  side: THREE.DoubleSide,
-  uniforms: {
-    uTime: { value: 0 },
-    uDistortT: { value: 0 },
-  }
+const smokeSphereGeo = new THREE.SphereGeometry(22, 64, 64);
+const smokeSphereMat = new THREE.ShaderMaterial({
+  vertexShader: smokeVS, fragmentShader: smokeFS,
+  uniforms: { uTime: { value: 0 }, uDistortT: { value: 0 } },
+  transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.BackSide,
 });
-
-const distortPlane = new THREE.Mesh(new THREE.PlaneGeometry(80, 80, 100, 100), distortMat);
-distortPlane.rotation.x = -Math.PI / 2; // Lay it flat
-distortPlane.visible = false;
-scene.add(distortPlane);
+const smokeSphere = new THREE.Mesh(smokeSphereGeo, smokeSphereMat);
+smokeSphere.position.set(0, -32, 0); // Positioned in the deep dive area
+smokeSphere.visible = false;
+scene.add(smokeSphere);
 
 // ──────────────────────────────────────────────────────────────────
-//  GOLDEN FOG DISC (3D LAYER)
+//  REFLECTIVE GLASS FLOOR (Phase 3)
 // ──────────────────────────────────────────────────────────────────
-function createFogDiscTexture() {
-  const cv = document.createElement('canvas');
-  cv.width = cv.height = 512;
-  const ctx = cv.getContext('2d');
-  const c = 256;
-  const g1 = ctx.createRadialGradient(c, c, 0, c, c, 256);
-  g1.addColorStop(0.00, 'rgba(20, 50, 120, 0.90)');
-  g1.addColorStop(0.20, 'rgba(15, 35, 90,  0.75)');
-  g1.addColorStop(0.50, 'rgba(10, 20, 60,  0.40)');
-  g1.addColorStop(0.75, 'rgba(5,  10, 30,  0.15)');
-  g1.addColorStop(1.00, 'rgba(0,   0,   0,   0.00)');
-  ctx.fillStyle = g1;
-  ctx.fillRect(0, 0, 512, 512);
-  const g2 = ctx.createRadialGradient(c, c, 0, c, c, 80);
-  g2.addColorStop(0.00, 'rgba(255, 255, 255, 0.55)');
-  g2.addColorStop(1.00, 'rgba(255, 255, 255, 0.00)');
-  ctx.fillStyle = g2;
-  ctx.fillRect(0, 0, 512, 512);
-  return new THREE.CanvasTexture(cv);
-}
+const floorRenderTarget = new THREE.WebGLCubeRenderTarget(256);
+const floorCubeCam = new THREE.CubeCamera(0.1, 100, floorRenderTarget);
+floorCubeCam.position.set(0, -34.5, 0);
+scene.add(floorCubeCam);
 
-const fogDiscMat = new THREE.MeshBasicMaterial({
-  map: createFogDiscTexture(),
-  transparent: true,
-  opacity: 0.0,
-  blending: THREE.AdditiveBlending,
-  depthWrite: false,
-  side: THREE.DoubleSide,
+const floorGeo = new THREE.PlaneGeometry(120, 120);
+const floorMat = new THREE.MeshStandardMaterial({
+  color: 0x050505,
+  roughness: 0.1,
+  metalness: 0.9,
+  envMap: floorRenderTarget.texture,
 });
-
-const fogDisc = new THREE.Mesh(new THREE.PlaneGeometry(32, 32, 1, 1), fogDiscMat);
-fogDisc.rotation.x = -Math.PI / 2;
-scene.add(fogDisc);
+const floorMesh = new THREE.Mesh(floorGeo, floorMat);
+floorMesh.rotation.x = -Math.PI / 2;
+floorMesh.position.set(0, -35, 0);
+scene.add(floorMesh);
 
 // ──────────────────────────────────────────────────────────────────
 //  HELIX TRAILS — 3 spirals, 120° apart, each with 90-point trail
@@ -462,43 +462,7 @@ const bpBMat = new THREE.PointsMaterial({
 });
 beamGroup.add(new THREE.Points(bpBGeo, bpBMat));
 
-// ──────────────────────────────────────────────────────────────────
-//  RGB PARTICLES (Slow pouring below the cloud)
-// ──────────────────────────────────────────────────────────────────
-const RGB_COUNT = 3000;
-const rgbPos = new Float32Array(RGB_COUNT * 3);
-const rgbCol = new Float32Array(RGB_COUNT * 3);
-const rgbVel = [];
-for (let i = 0; i < RGB_COUNT; i++) {
-  const r = Math.random() * CONE_R * 4.0; // even wider spread
-  const a = Math.random() * Math.PI * 2;
-  // Spawn between -28.0 (cloud surface peak) and -53.0
-  rgbPos[i * 3] = Math.cos(a) * r;
-  rgbPos[i * 3 + 1] = -28.0 - Math.random() * 25.0;
-  rgbPos[i * 3 + 2] = Math.sin(a) * r;
-
-  // Very slow downward velocity
-  rgbVel.push({
-    x: (Math.random() - 0.5) * 0.002,
-    y: -0.0005 - Math.random() * 0.002, // slow falling
-    z: (Math.random() - 0.5) * 0.002
-  });
-
-  // Vibrant RGB colors
-  const hue = Math.random();
-  const c = new THREE.Color().setHSL(hue, 1.0, 0.6);
-  rgbCol[i * 3] = c.r; rgbCol[i * 3 + 1] = c.g; rgbCol[i * 3 + 2] = c.b;
-}
-
-const rgbGeo = new THREE.BufferGeometry();
-rgbGeo.setAttribute('position', new THREE.BufferAttribute(rgbPos, 3));
-rgbGeo.setAttribute('color', new THREE.BufferAttribute(rgbCol, 3));
-const rgbMat = new THREE.PointsMaterial({
-  size: 0.15, sizeAttenuation: true, transparent: true, opacity: 0.0, // Faded in later
-  blending: THREE.AdditiveBlending, depthWrite: false, vertexColors: true,
-  map: circleTex, alphaTest: 0.01,
-});
-beamGroup.add(new THREE.Points(rgbGeo, rgbMat));
+// (RGB Particles removed)
 
 // ──────────────────────────────────────────────────────────────────
 //  AMBIENT PARTICLES (drifting dust around the scene)
@@ -678,8 +642,21 @@ window.addEventListener('pointercancel', () => { isDragging = false; });
 const clock = new THREE.Clock();
 let prevT = 0;
 
+// ── LENIS SMOOTH SCROLL ───────────────────────────────────────────
+const lenis = new Lenis({
+  duration: 1.2,
+  easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
+  smoothWheel: true
+});
+
+function raf(time) {
+  lenis.raf(time);
+  requestAnimationFrame(raf);
+}
+requestAnimationFrame(raf);
+
 function animate() {
-  requestAnimationFrame(animate);
+  requestAnimationFrame(animate); 
   const t = clock.getElapsedTime();
   const dt = Math.min(t - prevT, 0.05); // cap delta to avoid jump on tab refocus
   prevT = t;
@@ -776,46 +753,56 @@ function animate() {
   // ── HELIX TRAILS — update all three ───────────────────────────
   for (const ht of helixTrails) updateHelixTrail(ht, dt, distortT);
 
-  // ── BEAM PARTICLES — drift + cone-boundary respawn ────────────
+  // ── BEAM PARTICLES (Phase 4: Implosion) ────────────────────────
+  // We pull particles towards the center during the 'diveT' phase
+  const implosionStrength = smoothstep(0.65, 0.95, sp);
+  const singularityY = beamEndY - 25.0; // Center of the smoke sphere
+
   for (let i = 0; i < BP_A; i++) {
     const v = bpAVel[i];
-    bpAPos[i * 3] += v.x + Math.sin(t * 0.18 + i * 0.037) * 0.0005;
-    bpAPos[i * 3 + 1] += v.y;
-    bpAPos[i * 3 + 2] += v.z + Math.cos(t * 0.14 + i * 0.051) * 0.0005;
-    const dp = -bpAPos[i * 3 + 1];
+    // Normal drift
+    let nx = bpAPos[i * 3] + v.x + Math.sin(t * 0.18 + i * 0.037) * 0.0005;
+    let ny = bpAPos[i * 3 + 1] + v.y;
+    let nz = bpAPos[i * 3 + 2] + v.z + Math.cos(t * 0.14 + i * 0.051) * 0.0005;
+
+    // Implosion pull
+    if (implosionStrength > 0) {
+      nx = THREE.MathUtils.lerp(nx, 0, implosionStrength * 0.05);
+      ny = THREE.MathUtils.lerp(ny, singularityY, implosionStrength * 0.05);
+      nz = THREE.MathUtils.lerp(nz, 0, implosionStrength * 0.05);
+    }
+
+    bpAPos[i * 3] = nx; bpAPos[i * 3 + 1] = ny; bpAPos[i * 3 + 2] = nz;
+    
+    const dp = -ny;
     const mr = (dp / CONE_H) * CONE_R;
-    const d2 = bpAPos[i * 3] * bpAPos[i * 3] + bpAPos[i * 3 + 2] * bpAPos[i * 3 + 2];
+    const d2 = nx * nx + nz * nz;
     if (dp < -0.8 || dp > CONE_H * 1.08 || d2 > mr * mr * 1.9) spawnFine(i);
   }
   bpAGeo.attributes.position.needsUpdate = true;
 
   for (let i = 0; i < BP_B; i++) {
     const v = bpBVel[i];
-    bpBPos[i * 3] += v.x + Math.sin(t * 0.10 + i * 0.08) * 0.0004;
-    bpBPos[i * 3 + 1] += v.y;
-    bpBPos[i * 3 + 2] += v.z + Math.cos(t * 0.08 + i * 0.09) * 0.0004;
-    const dp = -bpBPos[i * 3 + 1];
+    let nx = bpBPos[i * 3] + v.x + Math.sin(t * 0.10 + i * 0.08) * 0.0004;
+    let ny = bpBPos[i * 3 + 1] + v.y;
+    let nz = bpBPos[i * 3 + 2] + v.z + Math.cos(t * 0.08 + i * 0.09) * 0.0004;
+
+    if (implosionStrength > 0) {
+      nx = THREE.MathUtils.lerp(nx, 0, implosionStrength * 0.05);
+      ny = THREE.MathUtils.lerp(ny, singularityY, implosionStrength * 0.05);
+      nz = THREE.MathUtils.lerp(nz, 0, implosionStrength * 0.05);
+    }
+
+    bpBPos[i * 3] = nx; bpBPos[i * 3 + 1] = ny; bpBPos[i * 3 + 2] = nz;
+
+    const dp = -ny;
     const mr = (dp / CONE_H) * CONE_R;
-    const d2 = bpBPos[i * 3] * bpBPos[i * 3] + bpBPos[i * 3 + 2] * bpBPos[i * 3 + 2];
+    const d2 = nx * nx + nz * nz;
     if (dp < -0.8 || dp > CONE_H * 1.08 || d2 > mr * mr * 1.9) spawnBokeh(i);
   }
   bpBGeo.attributes.position.needsUpdate = true;
 
-  // ── RGB PARTICLES ───────────────────────────────────────────────
-  rgbMat.opacity = distortT * 0.65; // only visible when distortion cloud is active
-  for (let i = 0; i < RGB_COUNT; i++) {
-    const v = rgbVel[i];
-    rgbPos[i * 3] += v.x + Math.sin(t * 0.2 + i) * 0.0005;
-    rgbPos[i * 3 + 1] += v.y;
-    rgbPos[i * 3 + 2] += v.z + Math.cos(t * 0.2 + i) * 0.0005;
-
-    // Loop back to cloud if they fall too far
-    if (rgbPos[i * 3 + 1] < -53.0) {
-      rgbPos[i * 3 + 1] = -28.0; // Respawn at the cloud surface peak
-    }
-  }
-  rgbGeo.attributes.position.needsUpdate = true;
-
+  // (RGB Particles animation removed)
   // ── AMBIENT PARTICLES (Trickle Filter) ────────────────────────
   const trickleT = smoothstep(0.65, 0.90, sp);
   apMat.opacity = 0.55;
@@ -839,26 +826,34 @@ function animate() {
   apGeo.attributes.color.needsUpdate = true;
   stars.rotation.y += 0.00005;
 
-  // ── DISTORTION & FOG ──────────────────────────────────────────
-  if (distortPlane) {
-    distortPlane.visible = distortT > 0.005;
-    distortMat.uniforms.uTime.value = t;
-    distortMat.uniforms.uDistortT.value = distortT;
-    distortPlane.position.y = beamEndY - 1.0;
-    distortPlane.rotation.z = t * 0.005; // much slower spin
+  // ── NEW EFFECTS UPDATE (Phases 2, 3, 5) ────────────────────────
+  if (smokeSphere) {
+    smokeSphere.visible = distortT > 0.005;
+    smokeSphereMat.uniforms.uTime.value = t;
+    smokeSphereMat.uniforms.uDistortT.value = distortT;
+    smokeSphere.position.y = beamEndY - 25.0; // Fixed center
   }
 
-  if (fogDisc) {
-    fogDisc.position.y = beamEndY - 2.5;
-    const pulse = 1.0 + Math.sin(t * 0.2) * 0.05;
-    fogDisc.rotation.z = -t * 0.02;
-    fogDisc.scale.set(pulse, pulse, pulse);
-    fogDiscMat.opacity = (0.45 + Math.sin(t * 0.4) * 0.08) * Math.max(distortT, fogT);
+  // Update Floor CubeCamera so reflections are live
+  if (floorCubeCam) {
+    floorMesh.visible = false; // Hide floor before capturing reflection
+    floorCubeCam.update(renderer, scene);
+    floorMesh.visible = true;
   }
 
-  if (fogLayerEl) {
-    fogLayerEl.style.opacity = Math.max(0, fogT * 0.85 + diveT * 0.15);
+  // Update Glitch Pass amount and vignette (Phase 5)
+  if (glitchPass) {
+    glitchPass.uniforms.uTime.value = t;
+    // Glitch spikes at the very end of the dive (0.90 to 0.98), then goes to 0
+    let glitchIntensity = smoothstep(0.90, 0.98, sp) * (1.0 - smoothstep(0.98, 1.0, sp));
+    glitchPass.uniforms.uAmount.value = glitchIntensity * 1.5;
+    
+    // Also fade in HTML glitch overlay
+    const glitchHTML = document.getElementById('glitch-overlay');
+    if (glitchHTML) glitchHTML.style.opacity = glitchIntensity * 0.8;
   }
+
+  // (fogLayerEl opacity update removed)
 
   if (nextSectionEl) {
     if (fogT > 0.88) nextSectionEl.classList.add('visible');
@@ -880,6 +875,9 @@ function animate() {
   composer.render();
 
   // ── SCROLL INDICATOR ────────────────────────────────────────
+  const scF = Math.max(0, 1 - sp * 4);
+  document.getElementById('scroll-indicator').style.opacity = String(scF);
+
   if (scrollDashes.length > 0) {
     const total = scrollDashes.length;
     let activeIdx = Math.floor(scrollProgress * total);

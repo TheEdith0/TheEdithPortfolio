@@ -651,12 +651,19 @@ gltfLdr.load('./sword.glb', (gltf) => {
     if (!c.isMesh) return;
     c.castShadow = true;
     if (c.material) {
-      c.material.metalness = 0.9;
-      c.material.roughness = 0.1;
-      c.material.envMapIntensity = 2.0;
+      c.material.envMapIntensity = 2.0; // Boost environmental reflections slightly
       c.material.needsUpdate = true;
     }
   });
+  
+  // External lights to illuminate the blade without altering its real color
+  const bladeLight1 = new THREE.PointLight(0xffaa00, 3, 15);
+  const bladeLight2 = new THREE.PointLight(0xffaa00, 3, 15);
+  scene.add(bladeLight1);
+  scene.add(bladeLight2);
+  // Store them on the sword model object for easy access in animate()
+  swordModel.userData.lights = [bladeLight1, bladeLight2];
+  
   scene.add(swordModel);
   swordLoaded = true;
 }, undefined, (err) => console.error('sword:', err));
@@ -819,11 +826,18 @@ function animate() {
     const sc = morphT * swordModel.userData.baseScale;
     swordModel.scale.setScalar(sc);
     
-    // Give sword a bright emissive bloom pulse as it materialises
-    swordModel.traverse(c => {
-      if (!c.isMesh || !c.material) return;
-      c.material.emissiveIntensity = THREE.MathUtils.lerp(3.0, 0.5, morphT);
-    });
+    // Give sword a bright pulse from the external lights as it materialises
+    const lightInt = THREE.MathUtils.lerp(8.0, 3.0, morphT);
+    swordModel.userData.lights[0].intensity = lightInt;
+    swordModel.userData.lights[0].position.set(2, swordY, 3);
+    swordModel.userData.lights[0].visible = true;
+    
+    swordModel.userData.lights[1].intensity = lightInt;
+    swordModel.userData.lights[1].position.set(-2, swordY, -3);
+    swordModel.userData.lights[1].visible = true;
+  } else if (swordModel && swordModel.userData.lights) {
+    swordModel.userData.lights[0].visible = false;
+    swordModel.userData.lights[1].visible = false;
   }
 
   // ── CAMERA (x-z plane arc, plus tilt down at the end) ────────

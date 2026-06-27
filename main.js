@@ -366,9 +366,48 @@ const cyberGridMat = new THREE.ShaderMaterial({
   `
 });
 const cyberGridMesh = new THREE.Mesh(cyberGridGeo, cyberGridMat);
-cyberGridMesh.rotation.x = -Math.PI / 2;
+cyberGridMesh.rotation.x = -Math.PI / 2; // Makes the grid stand vertically like a wall behind the sword
 // Add it to the shockwave group so it anchors perfectly to the sword
 shockwaveGroup.add(cyberGridMesh);
+
+// ──────────────────────────────────────────────────────────────────
+//  DIGITAL EMBERS (Rising from Virtual Floor)
+// ──────────────────────────────────────────────────────────────────
+const embersN = 300;
+const embersGeo = new THREE.BufferGeometry();
+const embersPos = new Float32Array(embersN * 3);
+const embersCol = new Float32Array(embersN * 3);
+const embersSpeed = new Float32Array(embersN);
+
+for(let i = 0; i < embersN; i++) {
+  const r = 0.5 + Math.pow(Math.random(), 2) * 12; // Concentrate more near the center
+  const theta = Math.random() * Math.PI * 2;
+  embersPos[i*3] = Math.cos(theta) * r;
+  embersPos[i*3+1] = Math.random() * 20; // Initial random height 0 to 20
+  embersPos[i*3+2] = Math.sin(theta) * r;
+  
+  // Mix of Neon Pink/Red and Neon Blue
+  const isRed = Math.random() > 0.5;
+  embersCol[i*3]   = isRed ? 1.0 : 0.0; // R
+  embersCol[i*3+1] = isRed ? 0.1 : 0.6; // G
+  embersCol[i*3+2] = isRed ? 0.3 : 1.0; // B
+  
+  // Upward speed
+  embersSpeed[i] = 2.0 + Math.random() * 4.0;
+}
+embersGeo.setAttribute('position', new THREE.BufferAttribute(embersPos, 3));
+embersGeo.setAttribute('color', new THREE.BufferAttribute(embersCol, 3));
+
+const embersMat = new THREE.PointsMaterial({
+  size: 0.2,
+  vertexColors: true,
+  transparent: true,
+  opacity: 0,
+  blending: THREE.AdditiveBlending,
+  depthWrite: false
+});
+const embersMesh = new THREE.Points(embersGeo, embersMat);
+scene.add(embersMesh);
 
 // ──────────────────────────────────────────────────────────────────
 //  HELIX TRAILS — 3 spirals, 120° apart, each with 90-point trail
@@ -933,6 +972,26 @@ function animate() {
       ring2Mat.opacity = 0;
       cyberGridMat.uniforms.uOpacity.value = 0;
   }
+  
+  // --- Digital Embers ---
+  if (swordStartYLatched !== null) {
+      embersMesh.position.y = (beamEndY - 2.0); // Anchor to virtual floor
+  }
+  // Fade in embers during the last 15% of the scroll
+  const embersFade = smoothstep(0.85, 0.95, sp);
+  embersMat.opacity = embersFade * 0.8;
+  
+  if (embersFade > 0) {
+      const positions = embersGeo.attributes.position.array;
+      for (let i = 0; i < embersN; i++) {
+          positions[i*3 + 1] += dt * embersSpeed[i];
+          // Reset particle to bottom when it goes too high, and jitter X/Z slightly
+          if (positions[i*3 + 1] > 20.0) {
+              positions[i*3 + 1] = 0;
+          }
+      }
+      embersGeo.attributes.position.needsUpdate = true;
+  }
 
   // ── CAMERA (x-z plane arc, plus tilt down at the end) ────────
   // Tilt starts at 55% now (overlapping with riseT ending at 60%) to keep motion constant
@@ -1093,6 +1152,15 @@ function animate() {
     const welcomeFadeIn = smoothstep(0.26, 0.35, sp);
     const welcomeFadeOut = smoothstep(0.70, 0.80, sp);
     welcomeTextEl.style.opacity = String(welcomeFadeIn * (1.0 - welcomeFadeOut));
+  }
+  
+  // ── CINEMATIC LETTERBOXING ────────────────────────────────────
+  const cinemaTop = document.getElementById('cinema-bar-top');
+  const cinemaBottom = document.getElementById('cinema-bar-bottom');
+  if (cinemaTop && cinemaBottom) {
+    const letterboxT = smoothstep(0.88, 0.98, sp);
+    cinemaTop.style.transform = `translateY(${THREE.MathUtils.lerp(-100, 0, letterboxT)}%)`;
+    cinemaBottom.style.transform = `translateY(${THREE.MathUtils.lerp(100, 0, letterboxT)}%)`;
   }
 
   // ── 2-D STREAKS ───────────────────────────────────────────────

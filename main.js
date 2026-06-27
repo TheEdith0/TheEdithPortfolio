@@ -1105,6 +1105,9 @@ function animate() {
   // Both drop 24 units. Since sword drops 18, the camera catches up to perfectly center the sword.
   finalCamY -= camDiveT * 24.0;
   lookY -= camDiveT * 24.0;
+  
+  // Dramatically zoom OUT (increase radius) as it dives into the void
+  finalCamR += camDiveT * 20.0;
 
 
   camera.position.x = Math.sin(orbit) * finalCamR;
